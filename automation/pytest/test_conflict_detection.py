@@ -16,7 +16,7 @@ def _run(cmd: list[str], cwd, check: bool = True, **kwargs) -> subprocess.Comple
 class TestCase004SyncRebaseConflict:
     """case-004: Sync detects upstream conflict when local committed changes diverge."""
 
-    def test_rebase_conflict_on_committed_divergence(self, user_a, user_b, git_commit, git_push):
+    def test_rebase_conflict_on_committed_divergence(self, main_repo, user_a, user_b, git_commit, git_push):
         # User B commits a change to calculate()
         git_commit(user_b, {
             "src/app.py": (
@@ -40,11 +40,10 @@ class TestCase004SyncRebaseConflict:
                 '    print(greet("World"))\n'
             ),
         }, "feat: negative values note")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
-        # User A pushes a conflicting change to main (same function, different change)
-        _run(["git", "checkout", "main"], cwd=user_a)
-        git_commit(user_a, {
+        # Push a conflicting change to main (simulates another developer)
+        git_commit(main_repo, {
             "src/app.py": (
                 '"""Main application module."""\n'
                 '\n'
@@ -68,7 +67,7 @@ class TestCase004SyncRebaseConflict:
                 '    print(greet("World"))\n'
             ),
         }, "feat: operation parameter")
-        _run(["git", "push", "origin", "main"], cwd=user_a)
+        _run(["git", "push", "origin", "main"], cwd=main_repo)
 
         # User B also has dirty local changes (simulating uncommitted work)
         (user_b / "notes.txt").write_text("scratch work in progress")
@@ -99,7 +98,7 @@ class TestCase005MergeStrategyConflict:
     """case-005: Merge detects divergent changes across strategies."""
 
     @pytest.mark.parametrize("strategy", ["merge", "squash", "rebase"])
-    def test_config_json_conflict_all_strategies(self, user_a, user_b, git_commit, git_push, strategy):
+    def test_config_json_conflict_all_strategies(self, main_repo, user_a, user_b, git_commit, git_push, strategy):
         # User B changes config.json
         git_commit(user_b, {
             "config.json": json.dumps({
@@ -107,35 +106,34 @@ class TestCase005MergeStrategyConflict:
                 "settings": {"debug": False, "log_level": "warning", "timeout": 30},
             }, indent=2),
         }, "feat: timeout setting")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
-        # User A changes config.json on main (conflicting)
-        _run(["git", "checkout", "main"], cwd=user_a)
-        git_commit(user_a, {
+        # Push a conflicting change to main (simulates another developer)
+        git_commit(main_repo, {
             "config.json": json.dumps({
                 "name": "test-project", "version": "1.0.0",
                 "settings": {"debug": True, "log_level": "debug", "max_retries": 3},
             }, indent=2),
         }, "feat: debug mode")
-        _run(["git", "push", "origin", "main"], cwd=user_a)
+        _run(["git", "push", "origin", "main"], cwd=main_repo)
 
-        # Merge user_b's branch into main on user_a's worktree
-        _run(["git", "fetch", "origin"], cwd=user_a)
+        # Merge user_b's branch into main on main_repo
+        _run(["git", "fetch", "origin"], cwd=main_repo)
         if strategy == "merge":
             result = subprocess.run(
-                ["git", "merge", "origin/feat/user-b-task", "--no-edit"], cwd=user_a,
+                ["git", "merge", "origin/user/user-b", "--no-edit"], cwd=main_repo,
                 capture_output=True, text=True,
             )
         elif strategy == "squash":
             result = subprocess.run(
-                ["git", "merge", "--squash", "origin/feat/user-b-task"], cwd=user_a,
+                ["git", "merge", "--squash", "origin/user/user-b"], cwd=main_repo,
                 capture_output=True, text=True,
             )
         elif strategy == "rebase":
-            # For rebase, we need to be on user_b's branch
-            _run(["git", "checkout", "-b", "test-rebase", "origin/feat/user-b-task"], cwd=user_a)
+            # For rebase, create a temp branch from user_b's branch
+            _run(["git", "checkout", "-b", "test-rebase", "origin/user/user-b"], cwd=main_repo)
             result = subprocess.run(
-                ["git", "rebase", "main"], cwd=user_a,
+                ["git", "rebase", "main"], cwd=main_repo,
                 capture_output=True, text=True,
             )
 
@@ -143,17 +141,17 @@ class TestCase005MergeStrategyConflict:
 
         # Abort to clean state
         if strategy == "rebase":
-            _run(["git", "rebase", "--abort"], cwd=user_a, check=False)
-            _run(["git", "checkout", "main"], cwd=user_a, check=False)
-            _run(["git", "branch", "-D", "test-rebase"], cwd=user_a, check=False)
+            _run(["git", "rebase", "--abort"], cwd=main_repo, check=False)
+            _run(["git", "checkout", "main"], cwd=main_repo, check=False)
+            _run(["git", "branch", "-D", "test-rebase"], cwd=main_repo, check=False)
         else:
-            _run(["git", "merge", "--abort"], cwd=user_a, check=False)
+            _run(["git", "merge", "--abort"], cwd=main_repo, check=False)
 
 
 class TestCase006ThreeWayPartialConflict:
     """case-006: 3-way merge where one file conflicts and another merges clean."""
 
-    def test_partial_conflict(self, user_a, user_b, git_commit, git_push):
+    def test_partial_conflict(self, main_repo, user_a, user_b, git_commit, git_push):
         # User A changes app.py (conflicting) + README.md (clean)
         git_commit(user_a, {
             "src/app.py": (
@@ -163,7 +161,7 @@ class TestCase006ThreeWayPartialConflict:
             ),
             "README.md": "# Test Project\n\n## Usage\n\n```python\nfrom app import greet\n```\n",
         }, "feat: overflow + usage docs")
-        git_push(user_a, "feat/user-a-task")
+        git_push(user_a, "user/user-a")
 
         # User B changes app.py (conflicting) + config.json (clean)
         git_commit(user_b, {
@@ -182,13 +180,12 @@ class TestCase006ThreeWayPartialConflict:
                 '}\n'
             ),
         }, "feat: negative guard + cache config")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
-        # Merge user_a into main first
-        _run(["git", "checkout", "main"], cwd=user_a)
-        _run(["git", "fetch", "origin"], cwd=user_a)
-        _run(["git", "merge", "origin/feat/user-a-task", "--no-edit"], cwd=user_a)
-        _run(["git", "push", "origin", "main"], cwd=user_a)
+        # Merge user_a's branch into main first
+        _run(["git", "fetch", "origin"], cwd=main_repo)
+        _run(["git", "merge", "origin/user/user-a", "--no-edit"], cwd=main_repo)
+        _run(["git", "push", "origin", "main"], cwd=main_repo)
 
         # User B syncs -- rebase should conflict only on app.py
         _run(["git", "fetch", "origin", "main"], cwd=user_b)

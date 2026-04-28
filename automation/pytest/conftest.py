@@ -1,7 +1,18 @@
 """Shared fixtures for WorkTree management tests.
 
-Creates isolated git repos per test to avoid cross-test contamination.
-Each fixture is a temporary directory with a bare origin + working clones.
+Uses real git worktree (not clone) to match Polaris production architecture.
+Each user gets a worktree at <project>/.claude/worktrees/<username>/ on branch
+user/<username>, sharing the same .git directory with the main repo.
+
+Layout:
+    tmp_path/
+    ├── origin.git/                  ← bare remote
+    ├── project/                     ← main repo (clone of origin)
+    │   ├── src/app.py, README.md, config.json
+    │   └── .claude/worktrees/
+    │       ├── user-a/             ← git worktree add -b user/user-a
+    │       ├── user-b/             ← git worktree add -b user/user-b
+    │       └── user-c/             ← git worktree add -b user/user-c
 """
 import subprocess
 import shutil
@@ -78,36 +89,50 @@ def origin(tmp_path):
 
 
 @pytest.fixture
-def user_a(origin, tmp_path):
-    """User A worktree, branch feat/user-a-task."""
-    wt = tmp_path / "user-a"
-    _run(["git", "clone", str(origin), str(wt)], cwd=tmp_path)
-    _run(["git", "config", "user.email", "user-a@test"], cwd=wt)
-    _run(["git", "config", "user.name", "UserA"], cwd=wt)
-    _run(["git", "checkout", "-b", "feat/user-a-task"], cwd=wt)
-    return wt
+def main_repo(origin, tmp_path):
+    """Main project repo — the Polaris 'project_cwd'.
+
+    Acts as the parent for git worktrees. Users who need to operate directly
+    on main (e.g., pushing conflicting changes to simulate other developers)
+    should use this fixture.
+    """
+    project = tmp_path / "project"
+    _run(["git", "clone", str(origin), str(project)], cwd=tmp_path)
+    _run(["git", "config", "user.email", "main@test"], cwd=project)
+    _run(["git", "config", "user.name", "MainRepo"], cwd=project)
+    # Create the .claude/worktrees directory structure (mirrors Polaris)
+    (project / ".claude" / "worktrees").mkdir(parents=True)
+    return project
+
+
+def _create_worktree(main_repo: Path, username: str, branch: str) -> Path:
+    """Create a git worktree under .claude/worktrees/<username>/."""
+    wt_path = main_repo / ".claude" / "worktrees" / username
+    _run(
+        ["git", "worktree", "add", "-b", branch, str(wt_path)],
+        cwd=main_repo,
+    )
+    _run(["git", "config", "user.email", f"{username}@test"], cwd=wt_path)
+    _run(["git", "config", "user.name", username.capitalize()], cwd=wt_path)
+    return wt_path
 
 
 @pytest.fixture
-def user_b(origin, tmp_path):
-    """User B worktree, branch feat/user-b-task."""
-    wt = tmp_path / "user-b"
-    _run(["git", "clone", str(origin), str(wt)], cwd=tmp_path)
-    _run(["git", "config", "user.email", "user-b@test"], cwd=wt)
-    _run(["git", "config", "user.name", "UserB"], cwd=wt)
-    _run(["git", "checkout", "-b", "feat/user-b-task"], cwd=wt)
-    return wt
+def user_a(main_repo):
+    """User A worktree on branch user/user-a."""
+    return _create_worktree(main_repo, "user-a", "user/user-a")
 
 
 @pytest.fixture
-def user_c(origin, tmp_path):
-    """User C worktree, branch feat/user-c-task (for 3+ user tests)."""
-    wt = tmp_path / "user-c"
-    _run(["git", "clone", str(origin), str(wt)], cwd=tmp_path)
-    _run(["git", "config", "user.email", "user-c@test"], cwd=wt)
-    _run(["git", "config", "user.name", "UserC"], cwd=wt)
-    _run(["git", "checkout", "-b", "feat/user-c-task"], cwd=wt)
-    return wt
+def user_b(main_repo):
+    """User B worktree on branch user/user-b."""
+    return _create_worktree(main_repo, "user-b", "user/user-b")
+
+
+@pytest.fixture
+def user_c(main_repo):
+    """User C worktree on branch user/user-c."""
+    return _create_worktree(main_repo, "user-c", "user/user-c")
 
 
 @pytest.fixture
@@ -127,7 +152,10 @@ def git_commit():
 
 @pytest.fixture
 def git_push():
-    """Helper to push a branch to origin."""
+    """Helper to push a branch to origin.
+
+    Works from any worktree since all share the same .git.
+    """
 
     def _push(wt: Path, branch: str | None = None):
         cmd = ["git", "push", "origin"]

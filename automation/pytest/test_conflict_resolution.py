@@ -24,7 +24,7 @@ def _setup_conflict(user_a, user_b, git_commit, git_push):
             '    return greetings.get(lang, f"Hello, {name}!")\n'
         ),
     }, "feat: multilingual")
-    git_push(user_a, "feat/user-a-task")
+    git_push(user_a, "user/user-a")
 
     # User B: uppercase greet
     git_commit(user_b, {
@@ -35,13 +35,13 @@ def _setup_conflict(user_a, user_b, git_commit, git_push):
             '    return msg.upper() if uppercase else msg\n'
         ),
     }, "feat: uppercase")
-    git_push(user_b, "feat/user-b-task")
+    git_push(user_b, "user/user-b")
 
     # Merge into user_a to create conflict
     _run(["git", "fetch", "origin"], cwd=user_a)
     _run(["git", "merge", "origin/main", "--no-edit"], cwd=user_a)
     result = subprocess.run(
-        ["git", "merge", "origin/feat/user-b-task", "--no-edit"], cwd=user_a,
+        ["git", "merge", "origin/user/user-b", "--no-edit"], cwd=user_a,
         capture_output=True, text=True,
     )
     assert result.returncode != 0, "Expected conflict"
@@ -115,7 +115,7 @@ class TestCase010MultiFileBatchResolve:
             "config.json": '{"debug": true, "log_level": "debug"}\n',
             "README.md": "# My Project v2\n",
         }, "feat: A's changes")
-        git_push(user_a, "feat/user-a-task")
+        git_push(user_a, "user/user-a")
 
         # User B changes same 3 files
         git_commit(user_b, {
@@ -123,13 +123,13 @@ class TestCase010MultiFileBatchResolve:
             "config.json": '{"debug": false, "cache": true}\n',
             "README.md": "# Test Project Production\n",
         }, "feat: B's changes")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
         # Merge to create 3-file conflict
         _run(["git", "fetch", "origin"], cwd=user_a)
         _run(["git", "merge", "origin/main", "--no-edit"], cwd=user_a)
         result = subprocess.run(
-            ["git", "merge", "origin/feat/user-b-task", "--no-edit"], cwd=user_a,
+            ["git", "merge", "origin/user/user-b", "--no-edit"], cwd=user_a,
             capture_output=True, text=True,
         )
         assert result.returncode != 0

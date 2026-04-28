@@ -48,7 +48,7 @@ class TestCase001DifferentPartsNoConflict:
                 '    return a + b\n'
             ),
         }, "feat: personalize greeting")
-        git_push(user_a, "feat/user-a-task")
+        git_push(user_a, "user/user-a")
 
         # User B edits farewell() (middle of file)
         git_commit(user_b, {
@@ -70,12 +70,12 @@ class TestCase001DifferentPartsNoConflict:
                 '    return a + b\n'
             ),
         }, "feat: warm farewell")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
         # User A merges main + User B's branch
         _run(["git", "fetch", "origin"], cwd=user_a)
         _run(["git", "merge", "origin/main", "--no-edit"], cwd=user_a)
-        result = _merge_branch(user_a, "origin/feat/user-b-task")
+        result = _merge_branch(user_a, "origin/user/user-b")
 
         assert result.returncode == 0, f"Merge failed: {result.stderr}"
         content = (user_a / "src/app.py").read_text()
@@ -92,18 +92,18 @@ class TestCase001DifferentPartsNoConflict:
                 '    return a * b\n'
             ),
         }, "feat: add multiply")
-        git_push(user_a, "feat/user-a-task")
+        git_push(user_a, "user/user-a")
 
         # User B edits README.md
         git_commit(user_b, {
             "README.md": "# Test Project\n\n## Installation\n\n```bash\npip install test-project\n```\n",
         }, "docs: add installation")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
         # Merge both into user_a
         _run(["git", "fetch", "origin"], cwd=user_a)
         _run(["git", "merge", "origin/main", "--no-edit"], cwd=user_a)
-        result = _merge_branch(user_a, "origin/feat/user-b-task")
+        result = _merge_branch(user_a, "origin/user/user-b")
 
         assert result.returncode == 0, f"Merge failed: {result.stderr}"
         assert "multiply" in (user_a / "src/app.py").read_text()
@@ -123,7 +123,7 @@ class TestCase002SamePartConflict:
                 '    return greetings.get(lang, f"Hello, {name}!")\n'
             ),
         }, "feat: multilingual greeting")
-        git_push(user_a, "feat/user-a-task")
+        git_push(user_a, "user/user-a")
 
         # User B changes greet() signature differently
         git_commit(user_b, {
@@ -134,12 +134,12 @@ class TestCase002SamePartConflict:
                 '    return msg.upper() if uppercase else msg\n'
             ),
         }, "feat: uppercase greeting")
-        git_push(user_b, "feat/user-b-task")
+        git_push(user_b, "user/user-b")
 
         # Merge should conflict
         _run(["git", "fetch", "origin"], cwd=user_a)
         _run(["git", "merge", "origin/main", "--no-edit"], cwd=user_a)
-        result = _merge_branch(user_a, "origin/feat/user-b-task")
+        result = _merge_branch(user_a, "origin/user/user-b")
 
         assert result.returncode != 0, "Expected merge conflict but it succeeded"
         assert "CONFLICT" in result.stdout or "CONFLICT" in result.stderr
